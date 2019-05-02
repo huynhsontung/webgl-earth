@@ -1,0 +1,161 @@
+<html>
+    <head>
+        <style>
+            #control{
+                position: absolute;
+                top: 10px; left: 10px;
+            }
+
+            input{
+                margin: 0.4em;
+            }
+
+            label{
+                color: white;
+            }
+        </style>
+        <script id="vertex-shader" type="x-shader/x-vertex">
+            attribute vec4 a_position;
+            attribute vec4 a_normal;
+            attribute vec3 a_texcoord;
+            varying vec3 N, L, E;
+            varying vec2 v_texcoord;
+
+            uniform mat4 projectionMatrix;
+            uniform mat4 geoModelViewMatrix;
+            uniform mat4 pLight1ModelViewMatrix;
+            uniform mat4 rotationMatrix;
+            uniform vec4 lightPosition;
+            
+            void main(){
+                v_texcoord = a_texcoord.xy;
+                // directional light
+                vec3 pos = (geoModelViewMatrix * vec4(0,0,0,1)).xyz;
+                vec3 light = (pLight1ModelViewMatrix*lightPosition).xyz; 
+                L = normalize( light - pos );
+                E = normalize(-pos);
+                N = normalize( (rotationMatrix*a_normal).xyz);
+                gl_Position = projectionMatrix* geoModelViewMatrix * a_position;
+            } 
+        </script>
+        <script id="fragment-shader" type="x-shader/x-fragment">
+            precision mediump float;
+            
+            uniform vec4 u_color;
+            uniform vec4 ambientProduct;
+            uniform vec4 diffuseProduct;
+            uniform vec4 specularProduct;
+            uniform float shininess;
+            uniform sampler2D u_texture0;
+            uniform sampler2D u_texture1;
+            
+            uniform int isShaded;
+            varying vec3 N, L, E;
+            varying vec2 v_texcoord;
+            
+            void main(){
+                vec4 texture0 = texture2D(u_texture0, v_texcoord);
+                vec4 texture1 = texture2D(u_texture1, v_texcoord);
+                if (isShaded != 0){
+                    vec4 fColor;
+                    vec4 ambient = ambientProduct * texture1;
+                    float Kd = max( dot(L, N), 0.0 );
+                    vec4  diffuse = Kd * diffuseProduct * texture0 ;
+                    //vec3 H = normalize( L + E );
+                    vec3 R = reflect(-L,N);
+                    float Ks = pow( max(dot(R, E), 0.0), shininess );
+                    vec4  specular = Ks * specularProduct;
+                    if( dot(L, N) < 0.0 ) specular = vec4(0.0, 0.0, 0.0, 1.0);
+                    ambient = ambient * abs(Kd - 1.0);
+                    fColor = ambient + diffuse + specular;
+                    fColor.r = fColor.r > 1.0 ? 1.0 : fColor.r;
+                    fColor.g = fColor.g > 1.0 ? 1.0 : fColor.g;
+                    fColor.b = fColor.b > 1.0 ? 1.0 : fColor.b;
+                    fColor.a = 1.0;
+                    gl_FragColor = fColor;
+                } else {
+                    gl_FragColor = u_color;
+                }
+            }
+        </script>
+
+        <script id="vertex-shader1" type="x-shader/x-vertex">
+            attribute vec4 a_position;
+            attribute vec3 a_texcoord;
+            varying vec2 v_texcoord;
+            
+            void main(){
+                v_texcoord = a_texcoord.xy;
+                gl_Position = a_position;
+            } 
+        </script>
+        <script id="fragment-shader1" type="x-shader/x-fragment">
+            precision mediump float;
+
+            uniform sampler2D u_texture0;
+            varying vec2 v_texcoord;
+            
+            void main(){
+                vec4 texture0 = texture2D(u_texture0, v_texcoord);
+                float brightness = dot(texture0.rgb, vec3(0.2126, 0.7152, 0.0722));
+                gl_FragColor = brightness > 0.7 ? texture0 : vec4(0,0,0,1);
+            }
+        </script>
+
+        <script id="fragment-shader2" type="x-shader/x-fragment">
+            precision mediump float;
+
+            uniform vec2 textureSize;           //width, height in px
+            uniform sampler2D u_texture0;
+            uniform sampler2D u_texture1;
+            uniform int horizontal;
+            uniform float kernel[21];
+            varying vec2 v_texcoord;
+            
+            void main(){
+                vec2 onePixel = 1.0 / textureSize;
+                vec4 texture0 = texture2D(u_texture0, v_texcoord);
+                vec4 texture1 = texture2D(u_texture1, v_texcoord);
+                vec3 result = texture1.rgb * kernel[0];
+                if (horizontal == 1){
+                    for(int i = 1; i < 21; ++i) {
+                        result += texture2D(u_texture1, v_texcoord + vec2(onePixel.x * float(i) , 0.0)).rgb * kernel[i];
+                        result += texture2D(u_texture1, v_texcoord - vec2(onePixel.x * float(i) , 0.0)).rgb * kernel[i];
+                    }
+                    gl_FragColor = vec4(result, 1.0);
+                } else {
+                    for(int i = 1; i < 21; ++i) {
+                        result += texture2D(u_texture1, v_texcoord + vec2(0.0, onePixel.y * float(i) )).rgb * kernel[i];
+                        result += texture2D(u_texture1, v_texcoord - vec2(0.0, onePixel.y * float(i) )).rgb * kernel[i];
+                    }
+                    result += texture0.rgb;
+                    vec3 toneMapping = vec3(1.0) - exp(-result * 2.2);
+                    gl_FragColor = vec4(toneMapping, 1.0);
+                }
+            }
+        </script>
+
+        <script type="text/javascript" src="./Common/initShaders.js"></script>
+        <script type="text/javascript" src="./Common/MV.js"></script>
+        <script type="text/javascript" src="./Common/webgl-utils.js"></script>
+        <script type="text/javascript" src="./helpers.js"></script>
+        <script type="text/javascript" src="./light.js"></script>
+        <script type="text/javascript" src="./controls.js"></script>
+        <script type="text/javascript" src="./sphereObj.js"></script>
+        <script type="text/javascript" src="./postProcessing.js"></script>
+        <script type="text/javascript" src="./main.js"></script>
+    </head>
+    <body>
+        <canvas id="gl-canvas" width="1080" height="720">
+        Oops ... your browser doesn't support the HTML5 canvas element
+        </canvas>
+        <!-- <div id="control">
+            <input type="range" id="baseSlider" name="baseAngle" min="-180" max="180" value="0">
+            <label for="baseAngle">Base Angle</label>
+            <input type="range" id="lowerSlider" name="lowerArmAngle" min="-90" max="90" value="0">
+            <label for="lowerArmAngle">Lower Arm Angle</label>
+            <input type="range" id="upperSlider" name="upperArmAngle" min="-180" max="180" value="0">
+            <label for="upperArmAngle">Upper Arm Angle</label>
+        </div> -->
+    </body>
+</html>
